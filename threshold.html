@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threshold — A Mystery in Four Rooms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0c10;
+    --ink:#e9e4d6;
+    --ink-dim:#9b968a;
+    --gold:#c9a227;
+    --locked:#8b3535;
+    --unlocked:#4f8a5b;
+    --panel:#12151b;
+    --panel-line:rgba(233,228,214,0.12);
+    --serif:'Cormorant Garamond', Georgia, serif;
+    --sans:'Inter', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden;}
+  #app{position:relative;width:100vw;height:100vh;}
+
+  /* ---------- Login ---------- */
+  #login-screen{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(201,162,39,0.08), transparent 60%),
+      var(--bg);
+    z-index:50;
+    transition:opacity 0.6s ease;
+  }
+  #login-screen.hide{opacity:0;pointer-events:none;}
+  .login-box{max-width:440px;padding:0 32px;text-align:center;}
+  .login-eyebrow{font-family:var(--serif);font-size:15px;letter-spacing:0.04em;color:var(--gold);margin:0 0 6px;font-style:italic;}
+  .login-title{font-family:var(--serif);font-weight:600;font-size:56px;line-height:1;margin:0 0 18px;letter-spacing:0.01em;}
+  .login-sub{font-size:15px;line-height:1.6;color:var(--ink-dim);margin:0 0 36px;}
+  .login-form{display:flex;flex-direction:column;gap:10px;align-items:center;}
+  #name-input{
+    width:100%;max-width:320px;padding:13px 16px;background:transparent;
+    border:1px solid var(--panel-line);border-radius:3px;color:var(--ink);
+    font-family:var(--sans);font-size:15px;text-align:center;outline:none;
+    transition:border-color 0.2s;
+  }
+  #name-input:focus{border-color:var(--gold);}
+  #name-input::placeholder{color:var(--ink-dim);}
+  #enter-btn{
+    margin-top:14px;padding:13px 34px;background:var(--gold);color:#1a1408;
+    border:none;border-radius:3px;font-family:var(--sans);font-weight:600;font-size:14px;
+    cursor:pointer;letter-spacing:0.01em;transition:transform 0.15s, background 0.2s;
+  }
+  #enter-btn:hover{background:#ddb63a;}
+  #enter-btn:active{transform:scale(0.97);}
+  .login-hint{margin-top:22px;font-size:12px;color:var(--ink-dim);opacity:0.7;}
+
+  /* ---------- Game ---------- */
+  #game-wrap{position:absolute;inset:0;opacity:0;transition:opacity 0.6s ease;}
+  #game-wrap.show{opacity:1;}
+  #canvas-holder{position:absolute;inset:0;}
+  canvas{display:block;}
+
+  #hud{position:absolute;inset:0;pointer-events:none;z-index:10;}
+  .hud-top{
+    position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
+    align-items:flex-start;padding:26px 34px;pointer-events:none;
+  }
+  .room-tag{font-family:var(--serif);}
+  .room-roman{font-size:13px;color:var(--gold);letter-spacing:0.08em;margin:0 0 2px;}
+  .room-name{font-size:30px;font-weight:600;margin:0;}
+  .room-subtitle{font-size:14px;color:var(--ink-dim);margin:4px 0 0;font-style:italic;max-width:340px;}
+
+  .progress-dots{display:flex;gap:10px;padding-top:6px;}
+  .dot{width:9px;height:9px;border-radius:50%;border:1px solid var(--panel-line);background:transparent;transition:all 0.3s;}
+  .dot.done{background:var(--gold);border-color:var(--gold);}
+  .dot.current{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,39,0.15);}
+
+  .timer{font-family:var(--serif);font-size:20px;color:var(--ink-dim);font-variant-numeric:tabular-nums;}
+
+  .clue-panel{
+    position:absolute;bottom:30px;left:50%;transform:translateX(-50%);
+    background:rgba(18,21,27,0.86);border:1px solid var(--panel-line);border-radius:4px;
+    padding:16px 26px;max-width:520px;text-align:center;pointer-events:auto;
+    backdrop-filter:blur(6px);
+  }
+  .clue-text{font-family:var(--serif);font-size:18px;font-style:italic;line-height:1.4;margin:0 0 10px;color:var(--ink);}
+  .seq-row{display:flex;justify-content:center;gap:8px;margin-bottom:10px;}
+  .seq-dot{width:11px;height:11px;border-radius:50%;border:1px solid var(--panel-line);}
+  .seq-dot.filled{background:var(--unlocked);border-color:var(--unlocked);}
+  .clue-controls{display:flex;justify-content:center;gap:16px;align-items:center;}
+  .replay-link{background:none;border:none;color:var(--gold);font-family:var(--sans);font-size:13px;
+    cursor:pointer;text-decoration:underline;text-underline-offset:3px;padding:2px;}
+  .status-line{font-size:12px;color:var(--ink-dim);min-height:16px;transition:color 0.2s;}
+  .status-line.error{color:#e07a7a;}
+  .status-line.success{color:var(--unlocked);}
+
+  /* ---------- Transition / Win ---------- */
+  #fade-overlay{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity 0.5s ease;z-index:40;}
+  #fade-overlay.on{opacity:1;}
+
+  #win-screen{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 40%, rgba(201,162,39,0.1), transparent 60%), var(--bg);
+    z-index:60;text-align:center;
+  }
+  #win-screen.show{display:flex;}
+  .win-eyebrow{font-family:var(--serif);font-style:italic;color:var(--gold);font-size:15px;margin:0 0 8px;}
+  .win-title{font-family:var(--serif);font-weight:600;font-size:48px;margin:0 0 14px;}
+  .win-sub{font-size:15px;color:var(--ink-dim);margin:0 0 30px;max-width:420px;line-height:1.6;}
+  #play-again{padding:13px 30px;background:transparent;color:var(--ink);border:1px solid var(--gold);
+    border-radius:3px;font-family:var(--sans);font-size:14px;cursor:pointer;transition:background 0.2s;}
+  #play-again:hover{background:rgba(201,162,39,0.12);}
+
+  @media (max-width:640px){
+    .room-name{font-size:22px;}
+    .login-title{font-size:38px;}
+    .clue-panel{left:16px;right:16px;transform:none;max-width:none;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="login-screen">
+    <div class="login-box">
+      <p class="login-eyebrow">A mystery in four rooms</p>
+      <h1 class="login-title">Threshold</h1>
+      <p class="login-sub">Someone built four rooms and hid the way out in the pattern of things. Watch closely — each door remembers what it showed you.</p>
+      <p class="login-sub" id="team-line" style="display:none;margin:-22px 0 26px;color:var(--gold);font-style:italic;"></p>
+      <div class="login-form">
+        <input id="name-input" type="text" placeholder="Enter your name" maxlength="24" autocomplete="off">
+        <button id="enter-btn">Step inside</button>
+      </div>
+      <p class="login-hint">Best viewed on desktop, with sound on.</p>
+    </div>
+  </div>
+
+  <div id="game-wrap">
+    <div id="canvas-holder"></div>
+    <div id="hud">
+      <div class="hud-top">
+        <div class="room-tag">
+          <p class="room-roman" id="room-roman">ROOM I</p>
+          <p class="room-name" id="room-name">The Archive</p>
+          <p class="room-subtitle" id="room-subtitle">—</p>
+          <div class="progress-dots" id="progress-dots"></div>
+        </div>
+        <div class="timer" id="timer">00:00</div>
+      </div>
+      <div class="clue-panel">
+        <p class="clue-text" id="clue-text">—</p>
+        <div class="seq-row" id="seq-row"></div>
+        <div class="clue-controls">
+          <button class="replay-link" id="replay-btn">Watch it again</button>
+        </div>
+        <p class="status-line" id="status-line"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="fade-overlay"></div>
+
+  <div id="win-screen">
+    <div>
+      <p class="win-eyebrow" id="win-name">—</p>
+      <h1 class="win-title">You crossed all four rooms</h1>
+      <p class="win-sub" id="win-time">—</p>
+      <p class="win-sub" id="win-code" style="display:none;font-size:13px;letter-spacing:0.04em;"></p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button id="copy-summary" style="display:none;padding:13px 24px;background:transparent;color:var(--gold);border:1px solid var(--panel-line);border-radius:3px;font-family:var(--sans);font-size:13px;cursor:pointer;">Copy completion summary</button>
+        <button id="play-again">Start again</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+
+  var ROOMS = [
+    {
+      name:"The Archive", roman:"ROOM I",
+      subtitle:"Where every answer is filed away in order.",
+      clue:"The shelves remember what they saw. Repeat the sequence of light.",
+      wall:0x1c2b22, floor:0x121d15, accent:0x3c8f5e, glow:0x8be7ae, fog:0x0a0f0b,
+      sigilCount:4
+    },
+    {
+      name:"The Vault", roman:"ROOM II",
+      subtitle:"Sealed behind old debts and older promises.",
+      clue:"The vault shows its hand only once. Match it exactly.",
+      wall:0x2b1616, floor:0x1a0e0e, accent:0xa33b3b, glow:0xff9b7f, fog:0x0f0808,
+      sigilCount:5
+    },
+    {
+      name:"The Observatory", roman:"ROOM III",
+      subtitle:"A room built to measure the distance between stars.",
+      clue:"Trace the constellation exactly as it was drawn.",
+      wall:0x111f2e, floor:0x0a1520, accent:0x2f7fa8, glow:0x8fd9ff, fog:0x060d15,
+      sigilCount:5
+    },
+    {
+      name:"The Sanctum", roman:"ROOM IV",
+      subtitle:"The last room keeps the first truth.",
+      clue:"Everything you have learned, in the order you learned it.",
+      wall:0x2b2410, floor:0x191408, accent:0xc9a227, glow:0xffe08a, fog:0x120e05,
+      sigilCount:6
+    }
+  ];
+
+  var scene, camera, renderer, raycaster, clock;
+  var roomGroup = null;
+  var sigils = [];
+  var sigilHitMeshes = [];
+  var doorParts = null;
+  var currentRoomIndex = 0;
+  var targetSequence = [];
+  var playerSequence = [];
+  var showingSequence = true;
+  var doorAnim = { active:false, t:0, duration:1.0 };
+  var camAngle = 0.6;
+  var camRadius = 12.5;
+  var camHeight = 10.5;
+  var timerInterval = null;
+  var startTime = null;
+  var playerName = "";
+  var audioCtx = null;
+
+  var urlParams = new URLSearchParams(window.location.search);
+  var teamName = urlParams.get('team') || '';
+  var sessionCode = urlParams.get('code') || '';
+
+  if(teamName){
+    var teamLine = document.getElementById('team-line');
+    teamLine.textContent = 'Playing for ' + teamName + (sessionCode ? ' · code ' + sessionCode : '');
+    teamLine.style.display = 'block';
+  }
+
+  function initThree(){
+    var holder = document.getElementById('canvas-holder');
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+    renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    holder.appendChild(renderer.domElement);
+    raycaster = new THREE.Raycaster();
+    clock = new THREE.Clock();
+
+    window.addEventListener('resize', function(){
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    renderer.domElement.addEventListener('click', onClick);
+    renderer.domElement.addEventListener('wheel', function(e){
+      camRadius = Math.max(8, Math.min(18, camRadius + e.deltaY * 0.01));
+      e.preventDefault();
+    }, { passive:false });
+
+    animate();
+  }
+
+  function disposeGroup(g){
+    g.traverse(function(o){
+      if(o.geometry) o.geometry.dispose();
+      if(o.material){
+        if(Array.isArray(o.material)) o.material.forEach(function(m){ m.dispose(); });
+        else o.material.dispose();
+      }
+    });
+  }
+
+  function buildRoom(index){
+    if(roomGroup){ scene.remove(roomGroup); disposeGroup(roomGroup); }
+    sigils = [];
+    sigilHitMeshes = [];
+    doorAnim = { active:false, t:0, duration:1.0 };
+
+    var cfg = ROOMS[index];
+    var group = new THREE.Group();
+
+    scene.fog = new THREE.FogExp2(cfg.fog, 0.05);
+    renderer.setClearColor(cfg.fog);
+
+    // floor
+    var floorMat = new THREE.MeshStandardMaterial({ color:cfg.floor, roughness:0.9 });
+    var floor = new THREE.Mesh(new THREE.BoxGeometry(10,0.3,10), floorMat);
+    floor.position.y = -0.15;
+    group.add(floor);
+
+    var wallMat = new THREE.MeshStandardMaterial({ color:cfg.wall, roughness:0.85 });
+    var wallH = 4, half = 5, thick = 0.3;
+
+    // south wall (solid)
+    var southWall = new THREE.Mesh(new THREE.BoxGeometry(10, wallH, thick), wallMat);
+    southWall.position.set(0, wallH/2, half);
+    group.add(southWall);
+
+    // east / west walls
+    var eastWall = new THREE.Mesh(new THREE.BoxGeometry(thick, wallH, 10), wallMat);
+    eastWall.position.set(half, wallH/2, 0);
+    group.add(eastWall);
+    var westWall = new THREE.Mesh(new THREE.BoxGeometry(thick, wallH, 10), wallMat);
+    westWall.position.set(-half, wallH/2, 0);
+    group.add(westWall);
+
+    // north wall split for door gap
+    var segW = 3.8;
+    var nwLeft = new THREE.Mesh(new THREE.BoxGeometry(segW, wallH, thick), wallMat);
+    nwLeft.position.set(-3.1, wallH/2, -half);
+    group.add(nwLeft);
+    var nwRight = new THREE.Mesh(new THREE.BoxGeometry(segW, wallH, thick), wallMat);
+    nwRight.position.set(3.1, wallH/2, -half);
+    group.add(nwRight);
+
+    // door panels
+    var doorMat = new THREE.MeshStandardMaterial({ color:0x2a2a2a, emissive:0x000000, roughness:0.5, metalness:0.3 });
+    var leftPanel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3.6, 0.2), doorMat.clone());
+    leftPanel.position.set(-0.6, 1.8, -4.85);
+    group.add(leftPanel);
+    var rightPanel = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3.6, 0.2), doorMat.clone());
+    rightPanel.position.set(0.6, 1.8, -4.85);
+    group.add(rightPanel);
+
+    var glowPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.2, 3.4),
+      new THREE.MeshBasicMaterial({ color:cfg.glow, transparent:true, opacity:0.55 })
+    );
+    glowPlane.position.set(0, 1.8, -5.1);
+    group.add(glowPlane);
+
+    var gapLight = new THREE.PointLight(cfg.glow, 0, 12);
+    gapLight.position.set(0, 1.8, -4.5);
+    group.add(gapLight);
+
+    doorParts = { left:leftPanel, right:rightPanel, glow:glowPlane, gapLight:gapLight, leftClosedX:-0.6, rightClosedX:0.6, leftOpenX:-3.1, rightOpenX:3.1 };
+
+    // lighting
+    var hemi = new THREE.HemisphereLight(0xffffff, 0x0a0a0a, 0.55);
+    group.add(hemi);
+    var centerLight = new THREE.PointLight(cfg.accent, 1.1, 22);
+    centerLight.position.set(0, 5.5, 0);
+    group.add(centerLight);
+    var fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+    fillLight.position.set(4, 8, 4);
+    group.add(fillLight);
+
+    // dust particles
+    var dustGeo = new THREE.BufferGeometry();
+    var dustCount = 140;
+    var positions = new Float32Array(dustCount*3);
+    for(var i=0;i<dustCount;i++){
+      positions[i*3] = (Math.random()-0.5)*9;
+      positions[i*3+1] = Math.random()*3.6;
+      positions[i*3+2] = (Math.random()-0.5)*9;
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    var dustMat = new THREE.PointsMaterial({ color:cfg.glow, size:0.03, transparent:true, opacity:0.4 });
+    var dust = new THREE.Points(dustGeo, dustMat);
+    group.add(dust);
+
+    // sigils arranged in a circle
+    var n = cfg.sigilCount;
+    for(var i=0;i<n;i++){
+      var angle = (i/n) * Math.PI*2 + Math.PI/2;
+      var r = 3.0;
+      var x = Math.cos(angle)*r;
+      var z = Math.sin(angle)*r*0.7; // slightly oval, keep clear of door on north side
+      z = Math.max(z, -2.6);
+
+      var sigilGroup = new THREE.Group();
+      sigilGroup.userData.index = i;
+
+      var pedestalMat = new THREE.MeshStandardMaterial({ color: mixColor(cfg.wall, 0x111111, 0.3), roughness:0.7 });
+      var pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.9, 8), pedestalMat);
+      pedestal.position.y = 0.45;
+      pedestal.userData.index = i;
+      sigilGroup.add(pedestal);
+
+      var orbMat = new THREE.MeshStandardMaterial({
+        color: cfg.accent, emissive: cfg.accent, emissiveIntensity:0.15, roughness:0.35, metalness:0.1
+      });
+      var orb = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 20), orbMat);
+      orb.position.y = 1.15;
+      orb.userData.index = i;
+      sigilGroup.add(orb);
+
+      // invisible wider hit target so clicks near the sigil still register
+      var hitZone = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.55, 1.6, 8),
+        new THREE.MeshBasicMaterial({ visible:false })
+      );
+      hitZone.position.y = 0.8;
+      hitZone.userData.index = i;
+      sigilGroup.add(hitZone);
+
+      sigilGroup.position.set(x, 0, z);
+      group.add(sigilGroup);
+      sigils.push({ group:sigilGroup, orb:orb, mat:orbMat, index:i, baseColor:cfg.accent });
+      sigilHitMeshes.push(pedestal, orb, hitZone);
+    }
+
+    scene.add(group);
+    roomGroup = group;
+
+    // camera focus point stays at box center
+    camAngle = 0.6;
+
+    // HUD update
+    document.getElementById('room-roman').textContent = cfg.roman;
+    document.getElementById('room-name').textContent = cfg.name;
+    document.getElementById('room-subtitle').textContent = cfg.subtitle;
+    document.getElementById('clue-text').textContent = cfg.clue;
+    renderDots(index);
+    renderSeqRow(0, n);
+    setStatus('', '');
+
+    // generate target sequence
+    targetSequence = shuffle(Array.from({length:n}, function(_,i){return i;}));
+    playerSequence = [];
+    showingSequence = true;
+    setStatus('Watch closely...', '');
+
+    setTimeout(function(){ playSequence(); }, 600);
+  }
+
+  function mixColor(a,b,t){
+    var ca = new THREE.Color(a), cb = new THREE.Color(b);
+    return ca.lerp(cb, t).getHex();
+  }
+
+  function shuffle(arr){
+    for(var i=arr.length-1;i>0;i--){
+      var j = Math.floor(Math.random()*(i+1));
+      var tmp = arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+    }
+    return arr;
+  }
+
+  function renderDots(activeIndex){
+    var wrap = document.getElementById('progress-dots');
+    wrap.innerHTML = '';
+    for(var i=0;i<ROOMS.length;i++){
+      var d = document.createElement('div');
+      d.className = 'dot' + (i < activeIndex ? ' done' : '') + (i === activeIndex ? ' current' : '');
+      wrap.appendChild(d);
+    }
+  }
+
+  function renderSeqRow(filled, total){
+    var wrap = document.getElementById('seq-row');
+    wrap.innerHTML = '';
+    for(var i=0;i<total;i++){
+      var d = document.createElement('div');
+      d.className = 'seq-dot' + (i < filled ? ' filled' : '');
+      wrap.appendChild(d);
+    }
+  }
+
+  function setStatus(text, kind){
+    var el = document.getElementById('status-line');
+    el.textContent = text;
+    el.className = 'status-line' + (kind ? ' '+kind : '');
+  }
+
+  function playSequence(){
+    showingSequence = true;
+    document.getElementById('replay-btn').style.pointerEvents = 'none';
+    var i = 0;
+    function step(){
+      if(i >= targetSequence.length){
+        showingSequence = false;
+        document.getElementById('replay-btn').style.pointerEvents = 'auto';
+        setStatus('Your turn — repeat the sequence.', '');
+        return;
+      }
+      var sig = sigils[targetSequence[i]];
+      flashSigil(sig, 1.0, 0.42);
+      i++;
+      setTimeout(step, 620);
+    }
+    step();
+  }
+
+  function flashSigil(sig, intensity, duration){
+    sig.mat.emissiveIntensity = intensity;
+    var s0 = sig.group.scale;
+    sig.group.scale.set(1.25,1.25,1.25);
+    setTimeout(function(){
+      sig.mat.emissiveIntensity = 0.15;
+      sig.group.scale.set(1,1,1);
+    }, duration*1000);
+  }
+
+  function flashSigilColor(sig, color, duration){
+    var old = sig.mat.color.getHex();
+    var oldEm = sig.mat.emissive.getHex();
+    sig.mat.color.setHex(color);
+    sig.mat.emissive.setHex(color);
+    sig.mat.emissiveIntensity = 1.0;
+    setTimeout(function(){
+      sig.mat.color.setHex(old);
+      sig.mat.emissive.setHex(oldEm);
+      sig.mat.emissiveIntensity = 0.15;
+    }, duration*1000);
+  }
+
+  function onClick(e){
+    if(showingSequence || doorAnim.active) return;
+    var rect = renderer.domElement.getBoundingClientRect();
+    var mouse = new THREE.Vector2(
+      ((e.clientX-rect.left)/rect.width)*2 - 1,
+      -((e.clientY-rect.top)/rect.height)*2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    var hits = raycaster.intersectObjects(sigilHitMeshes, false);
+    if(!hits.length) return;
+
+    var obj = hits[0].object;
+    while(obj && obj.userData.index === undefined) obj = obj.parent;
+    if(!obj) return;
+
+    var idx = obj.userData.index;
+    var sig = sigils[idx];
+    var expected = targetSequence[playerSequence.length];
+
+    if(idx === expected){
+      playerSequence.push(idx);
+      flashSigilColor(sig, 0x7fe37f, 0.35);
+      beep(520, 0.12, 'sine');
+      renderSeqRow(playerSequence.length, targetSequence.length);
+      if(playerSequence.length === targetSequence.length){
+        unlockDoor();
+      } else {
+        setStatus('Good. Keep going.', 'success');
+      }
+    } else {
+      flashSigilColor(sig, 0xe05a5a, 0.4);
+      beep(160, 0.22, 'sawtooth');
+      playerSequence = [];
+      renderSeqRow(0, targetSequence.length);
+      setStatus('Sequence broken. Try again.', 'error');
+    }
+  }
+
+  function unlockDoor(){
+    showingSequence = true;
+    setStatus('The door unlocks.', 'success');
+    beep(440, 0.1, 'sine');
+    setTimeout(function(){ beep(660, 0.1, 'sine'); }, 130);
+    setTimeout(function(){ beep(880, 0.16, 'sine'); }, 260);
+
+    doorParts.left.material.emissive.setHex(0x2a1a00);
+    doorParts.left.material.emissiveIntensity = 0.4;
+    doorParts.right.material.emissive.setHex(0x2a1a00);
+    doorParts.right.material.emissiveIntensity = 0.4;
+    doorParts.gapLight.intensity = 1.4;
+    doorParts.glow.material.opacity = 0.9;
+
+    setTimeout(function(){
+      doorAnim.active = true;
+      doorAnim.t = 0;
+    }, 500);
+  }
+
+  function transitionToNextRoom(){
+    var overlay = document.getElementById('fade-overlay');
+    overlay.classList.add('on');
+    setTimeout(function(){
+      currentRoomIndex++;
+      if(currentRoomIndex < ROOMS.length){
+        buildRoom(currentRoomIndex);
+        setTimeout(function(){ overlay.classList.remove('on'); }, 80);
+      } else {
+        showWin();
+      }
+    }, 520);
+  }
+
+  var lastSummary = '';
+
+  function showWin(){
+    stopTimer();
+    var overlay = document.getElementById('fade-overlay');
+    document.getElementById('win-name').textContent = playerName ? (playerName + ' — case closed') : 'Case closed';
+    var elapsed = Math.floor((Date.now()-startTime)/1000);
+    var m = Math.floor(elapsed/60), s = elapsed%60;
+    var timeStr = m + 'm ' + (s<10?'0':'') + s + 's';
+    document.getElementById('win-time').textContent = 'You made it through all four rooms in ' + timeStr + '.';
+
+    var codeEl = document.getElementById('win-code');
+    var copyBtn = document.getElementById('copy-summary');
+    if(teamName || sessionCode){
+      var parts = [];
+      if(teamName) parts.push(teamName);
+      if(sessionCode) parts.push('code ' + sessionCode);
+      codeEl.textContent = 'Report back: ' + parts.join(' · ');
+      codeEl.style.display = 'block';
+      lastSummary = 'Threshold complete — ' + playerName +
+        (teamName ? ' (' + teamName + ')' : '') +
+        (sessionCode ? ' — code ' + sessionCode : '') +
+        ' — finished in ' + timeStr;
+      copyBtn.style.display = 'inline-block';
+    } else {
+      codeEl.style.display = 'none';
+      copyBtn.style.display = 'none';
+    }
+
+    document.getElementById('win-screen').classList.add('show');
+    setTimeout(function(){ overlay.classList.remove('on'); }, 50);
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    var dt = clock.getDelta();
+
+    camAngle += dt * 0.08;
+    camera.position.x = Math.cos(camAngle) * camRadius;
+    camera.position.z = Math.sin(camAngle) * camRadius * 0.75 - 0.5;
+    camera.position.y = camHeight;
+    camera.lookAt(0, 0.5, -0.8);
+
+    if(doorAnim.active && doorParts){
+      doorAnim.t += dt / doorAnim.duration;
+      var p = Math.min(doorAnim.t, 1);
+      var ease = 1 - Math.pow(1-p, 3);
+      doorParts.left.position.x = lerp(doorParts.leftClosedX, doorParts.leftOpenX, ease);
+      doorParts.right.position.x = lerp(doorParts.rightClosedX, doorParts.rightOpenX, ease);
+      if(p >= 1){
+        doorAnim.active = false;
+        transitionToNextRoom();
+      }
+    }
+
+    if(renderer && scene && camera) renderer.render(scene, camera);
+  }
+
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  function beep(freq, duration, type){
+    if(!audioCtx) return;
+    try{
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0.08;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.stop(audioCtx.currentTime + duration + 0.02);
+    }catch(e){}
+  }
+
+  function startTimer(){
+    startTime = Date.now();
+    timerInterval = setInterval(function(){
+      var elapsed = Math.floor((Date.now()-startTime)/1000);
+      var m = Math.floor(elapsed/60), s = elapsed%60;
+      document.getElementById('timer').textContent = (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+    }, 500);
+  }
+  function stopTimer(){ if(timerInterval) clearInterval(timerInterval); }
+
+  function startGame(){
+    var nameVal = document.getElementById('name-input').value.trim();
+    playerName = nameVal || 'Investigator';
+
+    try{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }catch(e){ audioCtx = null; }
+
+    document.getElementById('login-screen').classList.add('hide');
+    document.getElementById('game-wrap').classList.add('show');
+
+    if(!scene) initThree();
+    currentRoomIndex = 0;
+    buildRoom(0);
+    startTimer();
+  }
+
+  function resetGame(){
+    document.getElementById('win-screen').classList.remove('show');
+    document.getElementById('login-screen').classList.remove('hide');
+    document.getElementById('game-wrap').classList.remove('show');
+    document.getElementById('name-input').value = '';
+    stopTimer();
+  }
+
+  document.getElementById('enter-btn').addEventListener('click', startGame);
+  document.getElementById('name-input').addEventListener('keydown', function(e){
+    if(e.key === 'Enter') startGame();
+  });
+  document.getElementById('replay-btn').addEventListener('click', function(){
+    if(!showingSequence) playSequence();
+  });
+  document.getElementById('play-again').addEventListener('click', resetGame);
+  document.getElementById('copy-summary').addEventListener('click', function(){
+    var btn = this;
+    var restore = btn.textContent;
+    function done(ok){
+      btn.textContent = ok ? 'Copied' : 'Select and copy manually';
+      setTimeout(function(){ btn.textContent = restore; }, 1600);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(lastSummary).then(function(){ done(true); }, function(){ done(false); });
+    } else {
+      done(false);
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
