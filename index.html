@@ -72,6 +72,9 @@
   #enter-btn:hover{background:#a52a3a;}
   #enter-btn:active{transform:scale(0.97);}
   .login-hint{margin-top:22px;font-size:11px;color:var(--ink-dim);opacity:0.55;font-family:var(--alert);letter-spacing:0.06em;}
+  .admin-link{position:absolute;bottom:18px;right:22px;font-size:11px;color:var(--ink-dim);opacity:0.4;
+    text-decoration:none;font-family:var(--sans);letter-spacing:0.02em;transition:opacity 0.2s;z-index:3;}
+  .admin-link:hover{opacity:0.85;}
 
   /* ---------- Game ---------- */
   #game-wrap{position:absolute;inset:0;opacity:0;transition:opacity 0.6s ease;}
@@ -148,6 +151,9 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,0.02);
     transition:border-color 0.15s;}
   .dial-slot:hover{border-color:var(--gold);}
+  .dial-slot.fb-correct{border-color:var(--gold);box-shadow:0 0 0 2px rgba(184,148,74,0.22);}
+  .dial-slot.fb-present{border-color:var(--gold);border-style:dashed;}
+  .dial-slot.fb-absent{border-color:var(--panel-line);opacity:0.5;}
   .sym{width:22px;height:22px;}
   .sym-0{border-radius:50%;background:var(--puzzle-accent);}
   .sym-1{background:var(--puzzle-accent);clip-path:polygon(50% 0%, 0% 100%, 100% 100%);}
@@ -209,6 +215,7 @@
       </div>
       <p class="login-hint">BEST VIEWED ON DESKTOP · SOUND ON</p>
     </div>
+    <a href="admin.html" class="admin-link">Admin</a>
   </div>
 
   <div id="game-wrap">
@@ -280,7 +287,7 @@
       name:"The Cell", roman:"ROOM III",
       subtitle:"A door that opens only for reason, never for guessing.",
       clue:"There's a lock set into the far wall. It's waiting on you.",
-      puzzleFlavor:"Three symbols. Every attempt tells you exactly which ones are right, which are close, and which don't belong at all.",
+      puzzleFlavor:"Three symbols, three slots. Every attempt marks each one directly — right, close, or wrong.",
       wall:0x1a1526, floor:0x100c18, accent:0x6b4a9c, glow:0xb08fff, fog:0x06050a,
     }
   ];
@@ -950,19 +957,23 @@
       '</div>';
     overlay.classList.add('show');
 
-    var secret = [Math.floor(Math.random()*4), Math.floor(Math.random()*4), Math.floor(Math.random()*4)];
+    var SYM_COUNT = 3; // fewer possible symbols per slot = fewer combinations to reason through
+    var secret = [Math.floor(Math.random()*SYM_COUNT), Math.floor(Math.random()*SYM_COUNT), Math.floor(Math.random()*SYM_COUNT)];
     var guess = [0,0,0];
     var attempts = 0;
+    var lastResult = null;
+    var testedCurrent = false;
 
     var dialsWrap = document.getElementById('mind-dials');
     function renderDials(){
       dialsWrap.innerHTML = '';
       guess.forEach(function(v, i){
         var slot = document.createElement('div');
-        slot.className = 'dial-slot';
+        slot.className = 'dial-slot' + (testedCurrent && lastResult ? ' fb-' + lastResult[i] : '');
         slot.innerHTML = '<div class="sym sym-' + v + '"></div>';
         slot.addEventListener('click', function(){
-          guess[i] = (guess[i] + 1) % 4;
+          guess[i] = (guess[i] + 1) % SYM_COUNT;
+          testedCurrent = false;
           beep(300 + guess[i]*40, 0.06, 'sine');
           renderDials();
         });
@@ -997,6 +1008,9 @@
     document.getElementById('mind-test').addEventListener('click', function(){
       attempts++;
       var result = scoreSlots(secret, guess);
+      lastResult = result;
+      testedCurrent = true;
+      renderDials();
       var history = document.getElementById('peg-history');
       var row = document.createElement('div');
       row.className = 'peg-row';
