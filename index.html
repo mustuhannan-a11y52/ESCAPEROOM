@@ -98,6 +98,12 @@
   .dot.current{border-color:var(--blood);box-shadow:0 0 0 3px rgba(139,34,48,0.18);}
 
   .timer{font-family:var(--alert);font-size:19px;color:var(--ink-dim);font-variant-numeric:tabular-nums;letter-spacing:0.03em;}
+  .hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
+  .mute-btn{pointer-events:auto;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.03);
+    border:1px solid var(--panel-line);color:var(--ink-dim);font-size:15px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:border-color 0.2s,color 0.2s;}
+  .mute-btn:hover{border-color:var(--gold);color:var(--ink);}
+  .mute-btn.muted{color:var(--blood);border-color:var(--blood);}
   .timer.urgent{color:var(--blood);animation:pulse-red 1.4s ease-in-out infinite;}
   @keyframes pulse-red{0%,100%{opacity:1;}50%{opacity:0.45;}}
 
@@ -229,7 +235,10 @@
           <p class="room-subtitle" id="room-subtitle">—</p>
           <div class="progress-dots" id="progress-dots"></div>
         </div>
-        <div class="timer" id="timer">00:00</div>
+        <div class="hud-right">
+          <button class="mute-btn" id="mute-btn" aria-label="Mute music" title="Mute music">🔊</button>
+          <div class="timer" id="timer">00:00</div>
+        </div>
       </div>
       <div class="clue-panel textured" id="clue-panel">
         <p class="clue-text" id="clue-text">—</p>
@@ -273,7 +282,8 @@
       subtitle:"Every book here remembers, but only in order.",
       clue:"The shelves lit themselves once. Give it back exactly as it happened.",
       wall:0x151f18, floor:0x0d140f, accent:0x4a8f5e, glow:0x7fe3a3, fog:0x050806,
-      sigilCount:5
+      sigilCount:5,
+      musicRoot:73.4, musicScale:[0,3,5,7,10], musicTempo:2600, musicFilter:280, musicTimbre:'sine'
     },
     {
       type:"jigsaw",
@@ -282,6 +292,7 @@
       clue:"Something on the wall isn't finished. Go and look.",
       puzzleFlavor:"A face, torn into nine. Swap the pieces until it looks back at you correctly.",
       wall:0x231212, floor:0x140b0b, accent:0x9c3b3b, glow:0xff9b7f, fog:0x070303,
+      musicRoot:65.4, musicScale:[0,1,4,6,7], musicTempo:1850, musicFilter:340, musicTimbre:'triangle'
     },
     {
       type:"mind",
@@ -289,6 +300,7 @@
       subtitle:"A door that opens only for reason, never for guessing.",
       clue:"There's a lock set into the far wall. It's waiting on you.",
       puzzleFlavor:"Three symbols, three slots. Every attempt marks each one directly — right, close, or wrong.",
+      musicRoot:58.3, musicScale:[0,2,3,7,8], musicTempo:3200, musicFilter:200, musicTimbre:'sine',
       wall:0x1a1526, floor:0x100c18, accent:0x6b4a9c, glow:0xb08fff, fog:0x06050a,
     }
   ];
@@ -313,6 +325,8 @@
   var startTime = null;
   var playerName = "";
   var audioCtx = null;
+  var masterGain = null;
+  var isMuted = false;
   var droneOsc = null, droneOsc2 = null, droneGain = null, droneFilter = null, droneLFO = null, droneLFOGain = null;
   var droneActive = false;
   var lastSummary = '';
@@ -558,6 +572,7 @@
     document.getElementById('clue-text').textContent = cfg.clue;
     renderDots(index);
     setStatus('', '');
+    startRoomMusic(cfg);
 
     if(cfg.type === 'sequence'){
       document.getElementById('seq-row').style.display = 'flex';
@@ -933,9 +948,6 @@
       render();
       if(isSolved(assignment)){
         document.getElementById('jigsaw-status').textContent = 'It looks back at you now.';
-        beep(440,0.1,'sine');
-        setTimeout(function(){ beep(660,0.1,'sine'); }, 130);
-        setTimeout(function(){ beep(880,0.16,'sine'); }, 260);
         setTimeout(function(){
           overlay.classList.remove('show');
           unlockDoor();
@@ -1028,9 +1040,6 @@
 
       if(result.every(function(s){ return s === 'correct'; })){
         document.getElementById('mind-status').textContent = 'The lock releases.';
-        beep(440,0.1,'sine');
-        setTimeout(function(){ beep(660,0.1,'sine'); }, 130);
-        setTimeout(function(){ beep(880,0.16,'sine'); }, 260);
         document.getElementById('mind-test').disabled = true;
         setTimeout(function(){
           overlay.classList.remove('show');
@@ -1047,9 +1056,7 @@
   function unlockDoor(){
     showingSequence = true;
     setStatus('The door unlocks.', 'success');
-    beep(440, 0.1, 'sine');
-    setTimeout(function(){ beep(660, 0.1, 'sine'); }, 130);
-    setTimeout(function(){ beep(880, 0.16, 'sine'); }, 260);
+    playSuccessFanfare();
 
     doorParts.left.material.emissive.setHex(0x2a1a00);
     doorParts.left.material.emissiveIntensity = 0.4;
@@ -1185,7 +1192,7 @@
   function lerp(a,b,t){ return a + (b-a)*t; }
 
   function beep(freq, duration, type){
-    if(!audioCtx) return;
+    if(!audioCtx || !masterGain) return;
     try{
       var osc = audioCtx.createOscillator();
       var gain = audioCtx.createGain();
@@ -1193,85 +1200,117 @@
       osc.frequency.value = freq;
       gain.gain.value = 0.08;
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      gain.connect(masterGain);
       osc.start();
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
       osc.stop(audioCtx.currentTime + duration + 0.02);
     }catch(e){}
   }
 
-  function startDrone(){
-    if(!audioCtx) return;
+  var musicTimers = [];
+  function clearMusicTimers(){
+    musicTimers.forEach(function(t){ clearTimeout(t); });
+    musicTimers = [];
+  }
+
+  // each room gets its own pad (root note + filter) and its own generative
+  // arpeggio (scale + tempo + timbre), so the three rooms sound distinct
+  function startRoomMusic(cfg){
+    stopDrone();
+    if(!audioCtx || !masterGain) return;
     try{
       droneActive = true;
 
-      // two slightly detuned low tones, beating against each other for an unsettling pad
       droneOsc = audioCtx.createOscillator();
       droneOsc2 = audioCtx.createOscillator();
       droneOsc.type = 'sawtooth';
       droneOsc2.type = 'sawtooth';
-      droneOsc.frequency.value = 55;
-      droneOsc2.frequency.value = 58.5;
+      droneOsc.frequency.value = cfg.musicRoot;
+      droneOsc2.frequency.value = cfg.musicRoot * 1.03;
 
       droneFilter = audioCtx.createBiquadFilter();
       droneFilter.type = 'lowpass';
-      droneFilter.frequency.value = 220;
-      droneFilter.Q.value = 1.2;
+      droneFilter.frequency.value = cfg.musicFilter;
+      droneFilter.Q.value = 1.1;
 
       droneGain = audioCtx.createGain();
-      droneGain.gain.value = 0.05;
+      droneGain.gain.value = 0.045;
 
       droneOsc.connect(droneFilter);
       droneOsc2.connect(droneFilter);
       droneFilter.connect(droneGain);
-      droneGain.connect(audioCtx.destination);
+      droneGain.connect(masterGain);
       droneOsc.start();
       droneOsc2.start();
 
-      // slow filter sweep so the pad breathes instead of sitting static
       droneLFO = audioCtx.createOscillator();
       droneLFO.type = 'sine';
       droneLFO.frequency.value = 0.045;
       droneLFOGain = audioCtx.createGain();
-      droneLFOGain.gain.value = 90;
+      droneLFOGain.gain.value = 70;
       droneLFO.connect(droneLFOGain);
       droneLFOGain.connect(droneFilter.frequency);
       droneLFO.start();
 
-      scheduleChime();
+      scheduleArp(cfg);
     }catch(e){}
   }
 
-  function scheduleChime(){
+  function scheduleArp(cfg){
     if(!droneActive) return;
-    var delay = 14000 + Math.random()*16000;
-    setTimeout(function(){
-      if(!droneActive || !audioCtx) return;
-      var freqs = [220, 262, 294, 330];
-      beepSoft(freqs[Math.floor(Math.random()*freqs.length)], 1.8);
-      scheduleChime();
-    }, delay);
+    var degree = cfg.musicScale[Math.floor(Math.random()*cfg.musicScale.length)];
+    var freq = cfg.musicRoot * 4 * Math.pow(2, degree/12);
+    playArpNote(freq, cfg.musicTimbre);
+    var t = setTimeout(function(){ scheduleArp(cfg); }, cfg.musicTempo + (Math.random()*400 - 200));
+    musicTimers.push(t);
   }
 
-  function beepSoft(freq, duration){
-    if(!audioCtx) return;
+  function playArpNote(freq, timbre){
+    if(!audioCtx || !masterGain) return;
     try{
       var osc = audioCtx.createOscillator();
       var gain = audioCtx.createGain();
-      osc.type = 'sine';
+      osc.type = timbre || 'sine';
       osc.frequency.value = freq;
       gain.gain.value = 0.0001;
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      gain.connect(masterGain);
       osc.start();
-      gain.gain.linearRampToValueAtTime(0.028, audioCtx.currentTime + 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-      osc.stop(audioCtx.currentTime + duration + 0.05);
+      gain.gain.linearRampToValueAtTime(0.045, audioCtx.currentTime + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.6);
+      osc.stop(audioCtx.currentTime + 1.7);
     }catch(e){}
+  }
+
+  // a distinct, brighter phrase for solving a room — different from the ambient pad
+  function playSuccessFanfare(){
+    if(!audioCtx || !masterGain) return;
+    if(droneGain){
+      try{ droneGain.gain.linearRampToValueAtTime(0.012, audioCtx.currentTime + 0.25); }catch(e){}
+    }
+    var notes = [523, 659, 784, 1047, 1319];
+    notes.forEach(function(freq, i){
+      setTimeout(function(){
+        try{
+          var osc = audioCtx.createOscillator();
+          var gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.value = 0.0001;
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start();
+          gain.gain.linearRampToValueAtTime(0.09, audioCtx.currentTime + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.9);
+          osc.stop(audioCtx.currentTime + 1.0);
+        }catch(e){}
+      }, i * 110);
+    });
   }
 
   function stopDrone(){
     droneActive = false;
+    clearMusicTimers();
     [droneOsc, droneOsc2, droneLFO].forEach(function(o){
       if(o){ try{ o.stop(); }catch(e){} }
     });
@@ -1296,7 +1335,10 @@
 
     try{
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }catch(e){ audioCtx = null; }
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = isMuted ? 0 : 1;
+      masterGain.connect(audioCtx.destination);
+    }catch(e){ audioCtx = null; masterGain = null; }
 
     document.getElementById('login-screen').classList.add('hide');
     document.getElementById('game-wrap').classList.add('show');
@@ -1305,7 +1347,6 @@
     currentRoomIndex = 0;
     buildRoom(0);
     startTimer();
-    startDrone();
   }
 
   function resetGame(){
@@ -1325,6 +1366,15 @@
     if(!showingSequence) playSequence();
   });
   document.getElementById('play-again').addEventListener('click', resetGame);
+  document.getElementById('mute-btn').addEventListener('click', function(){
+    isMuted = !isMuted;
+    if(masterGain && audioCtx){
+      masterGain.gain.setTargetAtTime(isMuted ? 0 : 1, audioCtx.currentTime, 0.05);
+    }
+    this.textContent = isMuted ? '🔇' : '🔊';
+    this.classList.toggle('muted', isMuted);
+    this.title = isMuted ? 'Unmute music' : 'Mute music';
+  });
   document.getElementById('copy-summary').addEventListener('click', function(){
     var btn = this;
     var restore = btn.textContent;
